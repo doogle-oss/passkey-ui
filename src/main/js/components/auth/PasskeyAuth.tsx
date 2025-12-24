@@ -393,13 +393,9 @@ export const PasskeyAuth: React.FC = () => {
                   variant="default"
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                      <rect x="2" y="10" width="14" height="6" rx="1.5" fill="currentColor" />
-                      <circle cx="17" cy="13" r="3" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                      <path d="M19 13h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
+                    <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
                   )}
-                    Login with Passkey
+                  Login with Passkey
                 </Button>
 
                 <Button
@@ -440,11 +436,7 @@ export const PasskeyAuth: React.FC = () => {
                     variant="default"
                   >
                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                        <rect x="2" y="10" width="14" height="6" rx="1.5" fill="currentColor" />
-                        <circle cx="17" cy="13" r="3" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                        <path d="M19 13h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
+                      <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
                     )}
                     Register Passkey Now
                   </Button>
@@ -590,13 +582,9 @@ export const PasskeyAuth: React.FC = () => {
                 {accountCreated && (
                   <Button onClick={handleAddPasskey} disabled={loading} className="w-full" variant="outline">
                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                        <rect x="2" y="10" width="14" height="6" rx="1.5" fill="currentColor" />
-                        <circle cx="17" cy="13" r="3" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                        <path d="M19 13h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
+                      <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
                     )}
-                      Add Passkey
+                    Add Passkey
                   </Button>
                 )}
               </div>

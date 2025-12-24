@@ -1,11 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CreditCard, Lock, Shield, ChevronRight } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useCart } from '@/context/CartContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { WebAuthn } from '@/components/auth/Webauthn';
 
 type Step = 'address' | 'payment' | 'confirm';
 
@@ -14,6 +23,23 @@ const CheckoutPage = () => {
   const { state, cartTotal, clearCart } = useCart();
   const [currentStep, setCurrentStep] = useState<Step>('address');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null);
+  const [otpRemaining, setOtpRemaining] = useState(0);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [orderPlaced, setOrderPlaced] = useState(false);
+  const [paymentPasskeyLoading, setPaymentPasskeyLoading] = useState(false);
+  const [showPaymentPasskeyPrompt, setShowPaymentPasskeyPrompt] = useState(false);
+  const [paymentPasskeyExists, setPaymentPasskeyExists] = useState(false);
+  const [payWithPasskeyLoading, setPayWithPasskeyLoading] = useState(false);
+
+  const paymentWebAuthn = new WebAuthn({
+    registerOptionsChallengePath: '/q/webauthn/register-options-challenge',
+    registerPath: '/q/webauthn/register',
+    loginOptionsChallengePath: '/q/webauthn/login-options-challenge',
+    loginPath: '/q/webauthn/login',
+  });
 
   // Form states
   const [formData, setFormData] = useState({
@@ -64,7 +90,19 @@ const CheckoutPage = () => {
     setCurrentStep('payment');
   };
 
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
+  const generateOtp = () => {
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 60000;
+    setGeneratedOtp(newOtp);
+    setOtpExpiresAt(expires);
+    setOtpRemaining(60);
+    setOtp('');
+    setShowOtpModal(true);
+    console.log('Checkout OTP (demo):', newOtp);
+    toast.info('OTP sent. Please enter it to proceed.');
+  };
+
+  const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.cardNumber || !formData.cardName || !formData.expiry || !formData.cvv) {
@@ -72,33 +110,192 @@ const CheckoutPage = () => {
       return;
     }
 
-    setIsProcessing(true);
-
-    // Simulate 3D Secure authentication
-    toast.info('Redirecting to bank for 3D Secure verification...', {
-      duration: 2000,
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Simulate OTP verification
-    toast.info('Verifying payment...', {
-      duration: 1500,
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Payment success
-    setIsProcessing(false);
-    setCurrentStep('confirm');
-
-    // Clear cart and redirect
-    setTimeout(() => {
-      clearCart();
-      toast.success('Order placed successfully!');
-      navigate('/order-confirmation');
-    }, 2000);
+    generateOtp();
   };
+
+  const handleVerifyOtp = async () => {
+    if (!generatedOtp) {
+      toast.error('Request an OTP first');
+      return;
+    }
+    if (!otp) {
+      toast.error('Enter the OTP');
+      return;
+    }
+    if (otpExpiresAt && Date.now() > otpExpiresAt) {
+      toast.error('OTP expired. Request a new one.');
+      return;
+    }
+    if (otp !== generatedOtp) {
+      toast.error('Incorrect OTP');
+      return;
+    }
+
+    setIsProcessing(true);
+    toast.success('OTP verified');
+    setShowOtpModal(false);
+    setCurrentStep('confirm');
+    setOrderPlaced(true);
+
+    if (formData.email) {
+      sessionStorage.setItem('lastCheckoutEmail', formData.email);
+    }
+
+    // Clear cart and stay on order confirmation page
+    clearCart();
+    navigate('/order-confirmation');
+
+    // Offer to register a payment passkey if not present
+    checkPaymentPasskey();
+  };
+
+  const handleRequestNewOtp = () => {
+    generateOtp();
+  };
+
+  const paymentPasskeyUsername = formData.email ? `${formData.email}_payment` : '';
+
+  const checkPaymentPasskey = async () => {
+    if (!paymentPasskeyUsername) return;
+    try {
+      const resp = await fetch(`/api/users/${encodeURIComponent(paymentPasskeyUsername)}/webauthn/credentials`);
+      if (!resp.ok) return;
+      const exists = await resp.json();
+      setPaymentPasskeyExists(!!exists);
+      setShowPaymentPasskeyPrompt(!exists);
+    } catch (err) {
+      console.error('Payment passkey check failed:', err);
+    }
+  };
+
+  const handleRegisterPaymentPasskey = async () => {
+    if (!paymentPasskeyUsername) {
+      toast.error('Email required to register payment passkey');
+      return;
+    }
+    setPaymentPasskeyLoading(true);
+    try {
+      await paymentWebAuthn.register({
+        username: paymentPasskeyUsername,
+        displayName: `${formData.email} (Payment Passkey)`,
+      });
+      toast.success('Payment passkey registered');
+      setPaymentPasskeyExists(true);
+      setShowPaymentPasskeyPrompt(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to register payment passkey';
+      toast.error(msg);
+    } finally {
+      setPaymentPasskeyLoading(false);
+    }
+  };
+
+  const handlePayWithPasskey = async () => {
+    if (!paymentPasskeyUsername) {
+      toast.error('Email required for payment passkey');
+      return;
+    }
+    if (!paymentPasskeyExists) {
+      toast.error('No payment passkey found for this email');
+      return;
+    }
+
+    setPayWithPasskeyLoading(true);
+    setIsProcessing(true);
+    try {
+      await paymentWebAuthn.login({ username: paymentPasskeyUsername });
+      toast.success('Payment authorized via passkey');
+      if (formData.email) {
+        sessionStorage.setItem('lastCheckoutEmail', formData.email);
+      }
+      setOrderPlaced(true);
+      clearCart();
+      navigate('/order-confirmation');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Passkey payment failed. Please try again with your passkey. If it continues, use the OTP flow.');
+      console.error('Passkey payment failed:', detail);
+    } finally {
+      setPayWithPasskeyLoading(false);
+      setIsProcessing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!otpExpiresAt) return;
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((otpExpiresAt - Date.now()) / 1000));
+      setOtpRemaining(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [otpExpiresAt]);
+
+  useEffect(() => {
+    if (!paymentPasskeyUsername || currentStep !== 'payment') return;
+    const debounce = setTimeout(() => {
+      checkPaymentPasskey();
+    }, 300);
+    return () => clearTimeout(debounce);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentPasskeyUsername, currentStep]);
+
+  const renderOtpDialog = () => (
+    <Dialog open={showOtpModal} onOpenChange={setShowOtpModal}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enter OTP</DialogTitle>
+          <DialogDescription>
+            We have generated a 6-digit OTP (printed to console for this demo). Enter it within 60 seconds to continue.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Payment verification</span>
+            {generatedOtp && (
+              <span>{otpRemaining > 0 ? `Expires in ${otpRemaining}s` : 'OTP expired'}</span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="flex-1 px-4 py-3 bg-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold"
+              placeholder="Enter 6-digit OTP"
+            />
+            <Button
+              type="button"
+              variant="gold"
+              onClick={handleVerifyOtp}
+              disabled={isProcessing}
+              className="sm:w-40"
+            >
+              Verify OTP
+            </Button>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <Button type="button" variant="outline" size="sm" disabled={isProcessing} onClick={handleRequestNewOtp}>
+              Resend OTP
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={isProcessing} onClick={() => setShowOtpModal(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+
+        <DialogFooter />
+      </DialogContent>
+    </Dialog>
+  );
 
   const steps = [
     { id: 'address', label: 'Shipping', icon: '1' },
@@ -106,7 +303,7 @@ const CheckoutPage = () => {
     { id: 'confirm', label: 'Confirmation', icon: '3' },
   ];
 
-  if (state.items.length === 0) {
+  if (state.items.length === 0 && !orderPlaced) {
     navigate('/cart');
     return null;
   }
@@ -114,6 +311,7 @@ const CheckoutPage = () => {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8 lg:py-12">
+        {renderOtpDialog()}
         {/* Progress Steps */}
         <div className="max-w-3xl mx-auto mb-8">
           <div className="flex items-center justify-between">
@@ -385,6 +583,29 @@ const CheckoutPage = () => {
                   </div>
                 </div>
 
+                {paymentPasskeyExists && paymentPasskeyUsername && (
+                  <div className="p-4 border rounded-lg bg-secondary/60 text-sm flex flex-col gap-3">
+                    <div className="flex items-center gap-2 font-medium">
+                      <img src="/passkey_logo.jpg" alt="Passkey" className="h-5 w-5 rounded" />
+                      Pay with your saved payment passkey ({paymentPasskeyUsername})
+                    </div>
+                    <p className="text-muted-foreground">
+                      Authorize with your passkey and skip OTP for this payment.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        type="button"
+                        variant="gold"
+                        className="flex-1 inline-flex items-center justify-center gap-2"
+                        onClick={handlePayWithPasskey}
+                        disabled={payWithPasskeyLoading || isProcessing}
+                      >
+                        {payWithPasskeyLoading ? 'Authorizing...' : 'Pay with Passkey'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-4">
                   <Button
                     variant="outline"
@@ -402,7 +623,7 @@ const CheckoutPage = () => {
                     className="flex-1"
                     disabled={isProcessing}
                   >
-                    {isProcessing ? 'Processing...' : `Pay ${formatPrice(total)}`}
+                    {`Pay ${formatPrice(total)}`}
                   </Button>
                 </div>
               </form>
@@ -420,6 +641,38 @@ const CheckoutPage = () => {
                 <p className="text-sm text-muted-foreground">
                   Redirecting to order confirmation...
                 </p>
+
+                {!paymentPasskeyExists && paymentPasskeyUsername && (
+                  <div className="mt-6 p-4 border rounded-lg text-left bg-secondary/60">
+                    <p className="font-semibold mb-2">Register a payment passkey?</p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Save a passkey for faster, safer payments using {paymentPasskeyUsername}.
+                    </p>
+                    <div className="flex gap-3 flex-wrap">
+                      <Button
+                        variant="gold"
+                        onClick={handleRegisterPaymentPasskey}
+                        disabled={paymentPasskeyLoading}
+                      >
+                        {paymentPasskeyLoading ? (
+                          'Registering...'
+                        ) : (
+                          <span className="inline-flex items-center">
+                            <img src="/passkey_logo.jpg" alt="Passkey" className="h-5 w-5 mr-2 rounded" />
+                            Register Passkey
+                          </span>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPaymentPasskeyPrompt(false)}
+                        disabled={paymentPasskeyLoading}
+                      >
+                        Maybe later
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

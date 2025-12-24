@@ -94,6 +94,9 @@ export class WebAuthn {
       // @ts-ignore
       options.headers[this.csrf.header] = this.csrf.value;
     }
+    if (!options.credentials) {
+      options.credentials = 'include';
+    }
     return fetch(path, options);
   }
 
@@ -162,11 +165,12 @@ export class WebAuthn {
           body: JSON.stringify(body)
         })
       })
-      .then(res => {
+      .then(async res => {
         if (res.status >= 200 && res.status < 300) {
           return res;
         }
-        throw new Error(res.statusText);
+        const text = await res.text().catch(() => '');
+        throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`);
       });
   }
 
@@ -314,11 +318,12 @@ export class WebAuthn {
           body: JSON.stringify(body),
         })
       })
-      .then(res => {
+      .then(async res => {
         if (res.status >= 200 && res.status < 300) {
           return res;
         }
-          throw new Error(res.statusText);
+        const text = await res.text().catch(() => '');
+        throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`);
       });
   }
 }

@@ -14,7 +14,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   register: (user: User) => void;
   checkAuth: () => Promise<void>;
 }
@@ -24,6 +24,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const clearAuthCookies = () => {
+    try {
+      // Expire the Quarkus credential cookie to ensure browser session is cleared
+      document.cookie = 'quarkus-credential=; Max-Age=0; path=/;';
+    } catch (err) {
+      console.error('Failed to clear auth cookie:', err);
+    }
+  };
 
   // Check if user is already authenticated on mount
   useEffect(() => {
@@ -59,12 +68,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(userData);
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
-    // Call backend logout if needed
-    fetch('/q/webauthn/logout', { method: 'POST', credentials: 'include' }).catch(
-      (err) => console.error('Logout error:', err)
-    );
+    clearAuthCookies();
+    try {
+      await fetch('/q/webauthn/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   return (
