@@ -117,7 +117,7 @@ export class WebAuthn {
         if (res.status === 200) {
           return res;
         }
-        throw new Error(res.statusText, { cause: res });
+          throw new Error(res.statusText);
       })
       .then(res => res.json())
       .then(res => {
@@ -166,18 +166,24 @@ export class WebAuthn {
         if (res.status >= 200 && res.status < 300) {
           return res;
         }
-        throw new Error(res.statusText, { cause: res });
+        throw new Error(res.statusText);
       });
   }
 
   loginClientSteps(user: WebAuthnUser): Promise<any> {
+    console.log('[WebAuthn] loginClientSteps called with user:', user);
+    
     if (!this.loginOptionsChallengePath) {
+      console.error('[WebAuthn] Login challenge path is missing!');
       return Promise.reject('Login challenge path missing from the initial configuration!');
     }
+    
     let path = this.loginOptionsChallengePath;
     if (user != null && user.username != null) {
       path = path + "?" + new URLSearchParams({ username: user.username }).toString();
     }
+    console.log('[WebAuthn] Challenge endpoint path:', path);
+    
     return this.fetchWithCsrf(path, {
       method: 'GET',
       headers: {
@@ -186,24 +192,82 @@ export class WebAuthn {
       }
     })
       .then(res => {
+        console.log('[WebAuthn] Challenge fetch response status:', res.status);
         if (res.status === 200) {
           return res;
         }
-        throw new Error(res.statusText, { cause: res });
+        console.error('[WebAuthn] Challenge fetch failed with status:', res.status, res.statusText);
+        throw new Error(res.statusText);
       })
-      .then(res => res.json())
       .then(res => {
+        console.log('[WebAuthn] Parsing challenge JSON response...');
+        return res.json();
+      })
+      .then(res => {
+        console.log('[WebAuthn] Challenge response received:', {
+          challengeLength: res.challenge?.length,
+          rpId: res.rpId,
+          allowCredentialsCount: res.allowCredentials?.length || 0,
+          userVerification: res.userVerification
+        });
+        
         res.challenge = base64ToBuffer(res.challenge);
+        console.log('[WebAuthn] Challenge converted to buffer, length:', res.challenge.byteLength);
+        
         if (res.allowCredentials) {
+          console.log('[WebAuthn] Converting', res.allowCredentials.length, 'allowCredentials to buffers...');
           for (let i = 0; i < res.allowCredentials.length; i++) {
             res.allowCredentials[i].id = base64ToBuffer(res.allowCredentials[i].id);
+            console.log('[WebAuthn] Credential', i, 'converted:', {
+              idLength: res.allowCredentials[i].id.byteLength,
+              type: res.allowCredentials[i].type,
+              transports: res.allowCredentials[i].transports
+            });
           }
+        } else {
+          console.warn('[WebAuthn] No allowCredentials in response - will search for all credentials');
         }
+        
+        console.log('[WebAuthn] Final publicKey options:', {
+          challenge: res.challenge.byteLength,
+          rpId: res.rpId,
+          userVerification: res.userVerification,
+          allowCredentialsCount: res.allowCredentials?.length || 0
+        });
+        
         return res;
       })
-      .then(res => navigator.credentials.get({ publicKey: res }))
+      .then(res => {
+        console.log('[WebAuthn] Calling navigator.credentials.get()...');
+        console.log('[WebAuthn] Window hostname:', window.location.hostname);
+        console.log('[WebAuthn] Window origin:', window.location.origin);
+        
+        return navigator.credentials.get({ publicKey: res })
+          .then((credential: any) => {
+            console.log('[WebAuthn] Credential retrieved successfully:', {
+              id: credential?.id,
+              type: credential?.type,
+              hasResponse: !!credential?.response
+            });
+            return credential;
+          })
+          .catch((err: Error) => {
+            console.error('[WebAuthn] navigator.credentials.get() failed:', {
+              name: err.name,
+              message: err.message,
+              stack: err.stack
+            });
+            throw err;
+          });
+      })
       .then((credential: any) => {
-        return {
+        if (!credential) {
+          console.error('[WebAuthn] No credential returned (user may have cancelled)');
+          throw new Error('No credential returned - operation may have been cancelled');
+        }
+        
+        console.log('[WebAuthn] Formatting credential response...');
+        const formattedCredential = {
           id: credential.id,
           rawId: bufferToBase64(credential.rawId),
           response: {
@@ -214,6 +278,24 @@ export class WebAuthn {
           },
           type: credential.type
         };
+        
+        console.log('[WebAuthn] Formatted credential ready to send:', {
+          id: formattedCredential.id,
+          type: formattedCredential.type,
+          hasClientDataJSON: !!formattedCredential.response.clientDataJSON,
+          hasAuthenticatorData: !!formattedCredential.response.authenticatorData,
+          hasSignature: !!formattedCredential.response.signature
+        });
+        
+        return formattedCredential;
+      })
+      .catch((err: any) => {
+        console.error('[WebAuthn] loginClientSteps error:', {
+          name: err?.name,
+          message: err?.message,
+          type: typeof err
+        });
+        throw err;
       });
   }
 
@@ -236,7 +318,7 @@ export class WebAuthn {
         if (res.status >= 200 && res.status < 300) {
           return res;
         }
-        throw new Error(res.statusText, { cause: res });
+          throw new Error(res.statusText);
       });
   }
 }

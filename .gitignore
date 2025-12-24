@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+application-local.properties
+
+target/
+.vscode/
+.idea/
+*.iml
+
+*.tsbuildinfo

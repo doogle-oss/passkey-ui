@@ -1,22 +1,20 @@
-import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { PasskeyAuth } from '@/components/auth/PasskeyAuth';
 import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
-export const AuthPage: React.FC = () => {
+const AuthPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   // Redirect to home if already authenticated
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAuthenticated) {
       navigate('/');
     }
   }, [isAuthenticated, navigate]);
 
-  return (
-    <div className="min-h-screen">
-      <PasskeyAuth />
-    </div>
-  );
+  return <PasskeyAuth />;
 };
+
+export default AuthPage;
