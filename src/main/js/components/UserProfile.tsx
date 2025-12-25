@@ -53,7 +53,11 @@ export const UserProfile: React.FC = () => {
     setIsRegistering(true);
     try {
       const webAuthn = new WebAuthn();
-      await webAuthn.register(user);
+      await webAuthn.register({
+        username: user.username,
+        displayName: `${user.firstName} ${user.lastName}`,
+        id: String(user.id),
+      });
       setHasPasskey(true);
       toast({
         title: 'Passkey Registered!',
