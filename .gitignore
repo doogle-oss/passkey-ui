@@ -210,3 +210,6 @@ nbdist/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+
+application-local.yml
+.vscode
