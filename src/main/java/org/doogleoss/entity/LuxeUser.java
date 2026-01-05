@@ -1,72 +1,92 @@
 package org.doogleoss.entity;
 
 import java.time.LocalDateTime;
+import com.password4j.Argon2Function;
+import com.password4j.Hash;
+import com.password4j.Password;
+import com.password4j.types.Argon2;
 
-import io.quarkus.elytron.security.common.BcryptUtil;
-import io.quarkus.hibernate.orm.panache.PanacheEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+/**
+ * LuxeUser record for use with Vert.x
+ * Immutable data structure representing a user in the luxe_user table
+ * Uses Password4j with Argon2id for secure password hashing
+ */
+public record LuxeUser(
+    Long id,
+    String username,
+    String firstName,
+    String lastName,
+    String email,
+    String password,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {
 
-@Entity
-@Table(name = "luxe_user")
-public class LuxeUser extends PanacheEntity {
-    
-    @Column(unique = true, nullable = false)
-    public String username;
-    
-    @Column(nullable = false)
-    public String firstName;
-    
-    @Column(nullable = false)
-    public String lastName;
-    
-    @Column(unique = true, nullable = false)
-    public String email;
-    
-    @Column(nullable = true)
-    public String password;
-    
-    @Column(name = "created_at", nullable = false)
-    public LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    public LocalDateTime updatedAt;
-    
-    public LuxeUser() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+    // Argon2id configuration - OWASP recommended parameters
+    private static final Argon2Function ARGON2_FUNCTION = Argon2Function.getInstance(
+        65536,      // Memory cost: 64 MB
+        3,          // Iterations
+        4,          // Parallelism
+        32,         // Hash length in bytes
+        Argon2.ID   // Argon2id variant (hybrid of Argon2i and Argon2d)
+    );
+
+    /**
+     * Create a new user without ID (for insertion)
+     */
+    public static LuxeUser create(String username, String firstName, String lastName, String email, String plainPassword) {
+        return new LuxeUser(
+            null,
+            username,
+            firstName,
+            lastName,
+            email,
+            hashPassword(plainPassword),
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        );
     }
-    
-    public LuxeUser(String username, String firstName, String lastName, String email) {
-        this();
-        this.username = username;
-        this.firstName = firstName;
-        this.lastName = lastName;
-        this.email = email;
+
+    /**
+     * Create a new user without password (for passkey-only authentication)
+     */
+    public static LuxeUser createWithoutPassword(String username, String firstName, String lastName, String email) {
+        return new LuxeUser(
+            null,
+            username,
+            firstName,
+            lastName,
+            email,
+            null,
+            LocalDateTime.now(),
+            LocalDateTime.now()
+        );
     }
-    
-    public LuxeUser(String username, String firstName, String lastName, String email, String password) {
-        this(username, firstName, lastName, email);
-        setPassword(password);
-    }
-    
+
+    /**
+     * Get full name
+     */
     public String getFullName() {
         return firstName + " " + lastName;
     }
-    
+
     /**
-     * Set password with bcrypt encryption (one-way encryption)
-     * @param plainPassword the plain text password to encrypt
+     * Hash a plain text password using Password4j with Argon2id
+     *
+     * @param plainPassword the plain text password to hash
+     * @return the Argon2id hashed password string
      */
-    public void setPassword(String plainPassword) {
-        if (plainPassword != null && !plainPassword.isEmpty()) {
-            this.password = BcryptUtil.bcryptHash(plainPassword);
+    public static String hashPassword(String plainPassword) {
+        if (plainPassword == null || plainPassword.isEmpty()) {
+            return null;
         }
+        Hash hash = Password.hash(plainPassword).with(ARGON2_FUNCTION);
+        return hash.getResult();
     }
-    
+
     /**
-     * Validate a plain text password against the encrypted password
+     * Validate a plain text password against the hashed password using Password4j
+     *
      * @param plainPassword the plain text password to validate
      * @return true if password matches, false otherwise
      */
@@ -74,6 +94,24 @@ public class LuxeUser extends PanacheEntity {
         if (plainPassword == null || plainPassword.isEmpty() || password == null) {
             return false;
         }
-        return BcryptUtil.matches(plainPassword, password);
+        try {
+            return Password.check(plainPassword, password).with(ARGON2_FUNCTION);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Create a copy with updated timestamp
+     */
+    public LuxeUser withUpdatedTimestamp() {
+        return new LuxeUser(id, username, firstName, lastName, email, password, createdAt, LocalDateTime.now());
+    }
+
+    /**
+     * Create a copy with a new password
+     */
+    public LuxeUser withPassword(String plainPassword) {
+        return new LuxeUser(id, username, firstName, lastName, email, hashPassword(plainPassword), createdAt, LocalDateTime.now());
     }
 }

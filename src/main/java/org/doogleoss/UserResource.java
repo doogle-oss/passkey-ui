@@ -1,131 +1,142 @@
 package org.doogleoss;
 
+import static org.doogleoss.adapters.MutinyAdapters.uniSubscriber;
+
+import io.smallrye.mutiny.subscription.Cancellable;
+import io.vertx.core.json.Json;
+import io.vertx.mutiny.core.Vertx;
+import io.vertx.mutiny.ext.web.Router;
+import io.vertx.mutiny.ext.web.RoutingContext;
+import io.vertx.mutiny.ext.web.handler.BodyHandler;
 import org.doogleoss.dto.LoginRequest;
 import org.doogleoss.dto.UserRegistrationRequest;
-import org.doogleoss.dto.UserResponse;
 import org.doogleoss.service.UserService;
 
-import jakarta.annotation.security.PermitAll;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.SecurityContext;
-
-@Path("/api/users")
-@Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 public class UserResource {
-    
-    @Inject
-    UserService userService;
-    
-    @POST
-    @Path("/register")
-    @PermitAll
-    public Response registerUser(UserRegistrationRequest request) {
-        try {
-            UserResponse user = userService.registerUser(request);
-            return Response.status(Response.Status.CREATED).entity(user).build();
-        } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                .entity(new ErrorResponse(e.getMessage()))
-                .build();
-        } catch (Exception e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity(new ErrorResponse("Registration failed: " + e.getMessage()))
-                .build();
-        }
+
+  private final Vertx vertx;
+  private final UserService userService;
+
+  public UserResource(Vertx vertx, UserService userService) {
+    this.vertx = vertx;
+    this.userService = userService;
+  }
+
+  /** Build a sub-router exposing user endpoints. */
+  public Router build() {
+    Router router = Router.router(vertx);
+    router.route().handler(BodyHandler.create());
+
+    router.post("/register").handler(this::registerUser);
+    router.post("/login").handler(this::loginUser);
+    router.get("/me").handler(this::getCurrentUser);
+    router.get("/:username").handler(this::getUserById);
+    router.put("/:id").handler(this::updateUser);
+    router.get("/username/:username").handler(this::getUserByUsername);
+
+    return router;
+  }
+
+  private void registerUser(RoutingContext ctx) {
+    UserRegistrationRequest req = ctx.body().asPojo(UserRegistrationRequest.class);
+    userService
+        .registerUser(req)
+        .subscribe()
+        .with(
+            user -> sendJson(ctx, 201, user),
+            err -> handleError(ctx, err, 400, "Registration failed"));
+  }
+
+  private void loginUser(RoutingContext ctx) {
+    LoginRequest req = ctx.body().asPojo(LoginRequest.class);
+    userService
+        .loginUser(req)
+        .subscribe()
+        .with(user -> sendJson(ctx, 200, user), err -> handleError(ctx, err, 401, "Login failed"));
+  }
+
+  private void getCurrentUser(RoutingContext ctx) {
+    if (ctx.user() == null || ctx.user().principal() == null) {
+      sendError(ctx, 401, "Unauthorized");
+      return;
     }
-    
-    @POST
-    @Path("/login")
-    @PermitAll
-    public Response loginUser(LoginRequest request) {
-        try {
-            UserResponse user = userService.loginUser(request);
-            return Response.ok(user).build();
-        } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.UNAUTHORIZED)
-                .entity(new ErrorResponse(e.getMessage()))
-                .build();
-        } catch (Exception e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity(new ErrorResponse("Login failed: " + e.getMessage()))
-                .build();
-        }
+    String username = ctx.user().principal().getString("username");
+    userService
+        .getUserByUsername(username)
+        .subscribe()
+        .with(
+            user -> sendJson(ctx, 200, user), err -> handleError(ctx, err, 404, "User not found"));
+  }
+
+  private void getUserById(RoutingContext ctx) {
+    try {
+      var username = ctx.pathParam("username");
+      userService
+          .getUserByUsername(username)
+          .subscribe()
+          .with(
+              user -> sendJson(ctx, 200, user),
+              err -> handleError(ctx, err, 404, "User not found"));
+    } catch (NumberFormatException nfe) {
+      sendError(ctx, 400, "Invalid user id");
     }
-    
-    @GET
-    @Path("/me")
-    // @RolesAllowed("user")
-    public Response getCurrentUser(@Context SecurityContext ctx) {
-        try {
-            String username = ctx.getUserPrincipal().getName();
-            UserResponse user = userService.getUserByUsername(username);
-            return Response.ok(user).build();
-        } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse(e.getMessage()))
-                .build();
-        } catch (Exception e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity(new ErrorResponse("Failed to fetch user: " + e.getMessage()))
-                .build();
-        }
+  }
+
+  private void getUserByUsername(RoutingContext ctx) {
+    String username = ctx.pathParam("username");
+    userService
+        .getUserByUsername(username)
+        .subscribe()
+        .with(
+            user -> sendJson(ctx, 200, user), err -> handleError(ctx, err, 404, "User not found"));
+  }
+
+  private void updateUser(RoutingContext ctx) {
+    try {
+      Long id = Long.valueOf(ctx.pathParam("id"));
+      UserRegistrationRequest req = ctx.body().asPojo(UserRegistrationRequest.class);
+      userService
+          .updateUser(id, req)
+          .subscribe()
+          .with(
+              user -> sendJson(ctx, 200, user),
+              err -> handleError(ctx, err, 404, "Failed to update user"));
+    } catch (NumberFormatException nfe) {
+      sendError(ctx, 400, "Invalid user id");
     }
-    
-    @GET
-    @Path("/{id}")
-    // @RolesAllowed("user")
-    public Response getUserById(@PathParam("id") Long id) {
-        try {
-            UserResponse user = userService.getUserById(id);
-            return Response.ok(user).build();
-        } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse(e.getMessage()))
-                .build();
-        } catch (Exception e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity(new ErrorResponse("Failed to fetch user: " + e.getMessage()))
-                .build();
-        }
+  }
+
+  private <T> Cancellable sendJson(RoutingContext ctx, int status, T payload) {
+    if (payload == null || payload instanceof Void) {
+      return uniSubscriber(ctx.response().setStatusCode(status).getDelegate().end());
     }
-    
-    @PUT
-    @Path("/{id}")
-    // @RolesAllowed("user")
-    public Response updateUser(@PathParam("id") Long id, UserRegistrationRequest request) {
-        try {
-            UserResponse user = userService.updateUser(id, request);
-            return Response.ok(user).build();
-        } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(new ErrorResponse(e.getMessage()))
-                .build();
-        } catch (Exception e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity(new ErrorResponse("Failed to update user: " + e.getMessage()))
-                .build();
-        }
+    return uniSubscriber(
+        ctx.response()
+            .setStatusCode(status)
+            .putHeader("content-type", "application/json")
+            .getDelegate()
+            .end(Json.encode(payload)));
+  }
+
+  private void sendError(RoutingContext ctx, int status, String message) {
+    sendJson(ctx, status, new ErrorResponse(message));
+  }
+
+  private void handleError(
+      RoutingContext ctx, Throwable err, int defaultStatus, String fallbackMessage) {
+    int status = err instanceof IllegalArgumentException ? defaultStatus : 500;
+    String message = err.getMessage() != null ? err.getMessage() : fallbackMessage;
+    sendJson(ctx, status, new ErrorResponse(message));
+  }
+
+  // Simple error payload
+  public static class ErrorResponse {
+    public String error;
+
+    public ErrorResponse(String error) {
+      this.error = error;
     }
-    
-    // Helper class for error responses
-    public static class ErrorResponse {
-        public String error;
-        
-        public ErrorResponse(String error) {
-            this.error = error;
-        }
-        
-        public ErrorResponse() {}
-    }
+
+    public ErrorResponse() {}
+  }
 }

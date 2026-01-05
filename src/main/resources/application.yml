@@ -1,0 +1,7 @@
+database:
+  connection:
+    reconnectAttempts: 5
+    reconnectInterval: 2000
+  pool:
+    maxSize: 20
+    maxWaitQueueSize: 100

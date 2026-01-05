@@ -1,0 +1,10 @@
+database:
+    connection:
+        database: luxe_db_prod
+        host: prod-db.example.com
+        password: ${DB_PASSWORD}
+        port: 5432
+        user: prod_user
+    pool:
+        maxSize: 50
+        maxWaitQueueSize: 200
