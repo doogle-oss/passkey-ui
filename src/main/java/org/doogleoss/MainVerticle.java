@@ -14,6 +14,8 @@ import org.doogleoss.config.DatabaseConfig;
 import org.doogleoss.repository.UserRepository;
 import org.doogleoss.routers.LuxeUserRouter;
 import org.doogleoss.service.UserService;
+import org.doogleoss.routers.WebAuthnRouter;
+import org.doogleoss.repository.WebCredentialRepository;
 
 public class MainVerticle extends AbstractVerticle {
 
@@ -48,6 +50,9 @@ public class MainVerticle extends AbstractVerticle {
                   .subRouter(new UserResource(vertx, new UserService(userRepository)).build());
               // Mount user routers under /api
               router.route("/api/luxeusers/*").subRouter(new LuxeUserRouter(vertx, userRepository).build());
+              // WebAuthn endpoints under /q/* expected by frontend Webauthn.tsx
+              router.route("/q/*")
+                  .subRouter(new WebAuthnRouter(vertx, new WebCredentialRepository()).build());
 
 
               var server = vertx.createHttpServer().requestHandler(router);

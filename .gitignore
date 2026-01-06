@@ -213,3 +213,4 @@ nbdist/
 
 application-local.yml
 .vscode
+!/src/main/resources/application-local.yml

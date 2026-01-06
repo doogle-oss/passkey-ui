@@ -72,9 +72,8 @@
       <version>1.8.4</version>
     </dependency>
     <dependency>
-      <artifactId>smallrye-mutiny-vertx-auth-webauthn</artifactId>
-      <groupId>io.smallrye.reactive</groupId>
-      <version>${smallrye-mutiny-vertx.version}</version>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-auth-webauthn4j</artifactId>
     </dependency>
     <dependency>
       <artifactId>vertx-micrometer-metrics</artifactId>
@@ -95,12 +94,12 @@
       <artifactId>jackson-datatype-jsr310</artifactId>
       <version>2.20.1</version>
     </dependency>
-    <dependency>    <!--(1)-->
+    <dependency>
       <groupId>io.vertx</groupId>
-      <artifactId>vertx-auth-webauthn</artifactId>
-      <version>${vertx.version}</version>
+      <artifactId>vertx-auth-webauthn4j</artifactId>
       <classifier>client</classifier>
       <type>js</type>
+      <version>${vertx.version}</version>
     </dependency>
 
     <dependency>

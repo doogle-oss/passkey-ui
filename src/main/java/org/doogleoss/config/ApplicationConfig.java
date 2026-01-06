@@ -1,6 +1,6 @@
 package org.doogleoss.config;
 
-import static io.smallrye.mutiny.vertx.UniHelper.toUni;
+import static org.doogleoss.adapters.MutinyAdapters.toUni;
 
 import io.smallrye.mutiny.Uni;
 import io.vertx.config.ConfigRetrieverOptions;
