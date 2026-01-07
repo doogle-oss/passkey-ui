@@ -29,10 +29,9 @@ const OrderConfirmationPage = () => {
   const paymentWebAuthn = useMemo(
     () =>
       new WebAuthn({
-        registerOptionsChallengePath: '/q/webauthn/register-options-challenge',
-        registerPath: '/q/webauthn/register',
-        loginOptionsChallengePath: '/q/webauthn/login-options-challenge',
-        loginPath: '/q/webauthn/login',
+        registerPath: '/webauthn/register',
+        loginPath: '/webauthn/login',
+        callbackPath: '/webauthn/callback'
       }),
     []
   );
@@ -49,7 +48,7 @@ const OrderConfirmationPage = () => {
 
     setCheckingPasskey(true);
     try {
-      const resp = await fetch(`/api/users/${encodeURIComponent(paymentPasskeyUsername)}/webauthn/credentials`);
+      const resp = await fetch(`/webauthn/${encodeURIComponent(paymentPasskeyUsername)}/creds`);
       if (!resp.ok) {
         throw new Error('Could not check payment passkey status');
       }
@@ -95,6 +94,7 @@ const OrderConfirmationPage = () => {
     try {
       await paymentWebAuthn.register({
         username: paymentPasskeyUsername,
+        name: paymentPasskeyUsername,
         displayName: `${email} (Payment Passkey)`,
       });
       toast.success('Payment passkey registered');

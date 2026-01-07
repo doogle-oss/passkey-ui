@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
     host: "localhost",
     port: 3000,
     proxy: {
-      '/q': {
+      '/webauthn': {
         target: 'http://localhost:8080',
         changeOrigin: false,
         router: (req) => {

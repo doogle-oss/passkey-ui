@@ -1,19 +1,26 @@
 package org.doogleoss.routers;
 
-import static org.doogleoss.adapters.MutinyAdapters.uniSubscriber;
-
+import io.vertx.core.http.Cookie;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.auth.webauthn4j.Authenticator;
 import io.vertx.ext.auth.webauthn4j.RelyingParty;
 import io.vertx.ext.auth.webauthn4j.WebAuthn4J;
 import io.vertx.ext.auth.webauthn4j.WebAuthn4JOptions;
+import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.WebAuthn4JHandler;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.Router;
 import io.vertx.mutiny.ext.web.handler.BodyHandler;
+import io.vertx.mutiny.ext.web.handler.SessionHandler;
+import io.vertx.mutiny.ext.web.sstore.LocalSessionStore;
 import org.doogleoss.repository.WebCredentialRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Registers WebAuthn endpoints expected by the frontend Webauthn.tsx. */
 public class WebAuthnRouter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(WebAuthnRouter.class);
+  private static final String COOKIE_NAME = "vertx-web.session";
 
   private final Vertx vertx;
   private final WebCredentialRepository credentialRepository;
@@ -27,101 +34,104 @@ public class WebAuthnRouter {
         WebAuthn4J.create(
                 this.vertx.getDelegate(),
                 new WebAuthn4JOptions()
-                    .setRelyingParty(new RelyingParty().setName("Passkey Corporation")))
+                    .setRelyingParty(new RelyingParty().setName("Passkey Corporation"))
+                    // What kind of authentication do you want? do you care?
+                    // # security keys
+                    .setAuthenticatorAttachment(
+                        io.vertx.ext.auth.webauthn4j.AuthenticatorAttachment.CROSS_PLATFORM)
+                    // # fingerprint
+                    .setAuthenticatorAttachment(
+                        io.vertx.ext.auth.webauthn4j.AuthenticatorAttachment.PLATFORM)
+                    .setUserVerification(io.vertx.ext.auth.webauthn4j.UserVerification.REQUIRED))
+            // where to load or store the credentials
             .credentialStorage(this.credentialRepository);
   }
 
   public Router build() {
     Router router = Router.router(vertx);
-    router.route().handler(BodyHandler.create());
+    // parse the BODY
+    router.post().handler(BodyHandler.create());
 
-    // GET /q/webauthn/register-options-challenge?username=...&displayName=...
-    router
-        .get("/q/webauthn/register-options-challenge")
-        .handler(
-            ctx -> {
-              String username = ctx.request().getParam("username");
-              String displayName = ctx.request().getParam("displayName");
-              if (username == null || username.isEmpty()) {
-                uniSubscriber(ctx.response().setStatusCode(400).getDelegate().end("username is required"));
-                return;
-              }
-              // Use a single JsonObject with name, displayName, and optional icon per API
-              this.webAuthn4J
-                  .createCredentialsOptions(
-                      new JsonObject()
-                          .put("name", username)
-                          .put("displayName", displayName == null ? username : displayName)
-                          .put(
-                              "icon",
-                              "https://pics.example.com/00/p/aBjjjpqPb.png") // add if you have an
-                                                                             // icon
-                      )
-                  .onSuccess(
-                      (JsonObject json) ->
-                          uniSubscriber(ctx.response()
-                              .putHeader("content-type", "application/json")
-                              .getDelegate()
-                              .end(json.encode())))
-                  .onFailure(
-                      (Throwable err) -> uniSubscriber(ctx.response().setStatusCode(400).getDelegate().end(err.getMessage())));
-            });
+    // allow logout without passing through the WebAuthn handler
+    router.post("/logout").getDelegate().handler(this::logout);
+    // public check for existing passkey credentials by username
+    router.get("/:username/creds").getDelegate().handler(this::passkeyExists);
 
-    // GET /q/webauthn/login-options-challenge?username=...
-    router
-        .get("/q/webauthn/login-options-challenge")
-        .handler(
-            ctx -> {
-              String username = ctx.request().getParam("username");
-              this.webAuthn4J
-                  .getCredentialsOptions(username)
-                  .onSuccess(
-                      (JsonObject json) ->
-                          uniSubscriber(ctx.response()
-                              .putHeader("content-type", "application/json")
-                              .getDelegate()
-                              .end(json.encode())))
-                  .onFailure(
-                      (Throwable err) -> uniSubscriber(ctx.response().setStatusCode(400).getDelegate().end(err.getMessage())));
-            });
+    // security handler for WebAuthn endpoints
+    WebAuthn4JHandler webAuthNHandler =
+        WebAuthn4JHandler.create(webAuthn4J)
+            .setOrigin("http://luxestore.localhost:3000")
+            // required callback
+            .setupCallback(router.getDelegate().post("/callback"))
+            // optional register options callback
+            .setupCredentialsCreateCallback(router.getDelegate().post("/register"))
+            // optional login options callback
+            .setupCredentialsGetCallback(router.getDelegate().post("/login"));
 
-    // POST /q/webauthn/register?username=...
-    router
-        .post("/q/webauthn/register")
-        .handler(
-            ctx -> {
-              String username = ctx.request().getParam("username");
-              JsonObject body = ctx.body().asJsonObject();
-              if (username == null || username.isEmpty()) {
-                uniSubscriber(ctx.response().setStatusCode(400).getDelegate().end("username is required"));
-                return;
-              }
-              this.webAuthn4J
-                  .authenticate(username, body)
-                  .compose(authenticator -> credentialRepository.storeCredential(authenticator))
-                  .onSuccess(res -> uniSubscriber(ctx.response().setStatusCode(201).getDelegate().end()))
-                  .onFailure(
-                      (Throwable err) -> uniSubscriber(ctx.response().setStatusCode(400).getDelegate().end(err.getMessage())));
-            });
 
-    // POST /q/webauthn/login
-    router
-        .post("/q/webauthn/login")
-        .handler(
-            ctx -> {
-              JsonObject body = ctx.body().asJsonObject();
-              this.webAuthn4J
-                  .authenticate(body)
-                  .onSuccess(
-                      (Authenticator auth) ->
-                          uniSubscriber(ctx.response()
-                              .setStatusCode(200)
-                              .putHeader("content-type", "application/json")
-                              .getDelegate().end("{\"status\":\"ok\"}")))
-                  .onFailure(
-                      (Throwable err) -> uniSubscriber(ctx.response().setStatusCode(401).getDelegate().end(err.getMessage())));
-            });
+
+    // secure the remaining routes
+    router.route().getDelegate().handler(webAuthNHandler);
+//    router.route().getDelegate().failureHandler(this::failureHandler);
 
     return router;
+  }
+
+  private void failureHandler(RoutingContext ctx) {
+    Throwable failure = ctx.failure();
+    int statusCode = ctx.statusCode() > 0 ? ctx.statusCode() : 500;
+    LOG.error(
+        "WebAuthn handler error on {} {} with status {}",
+        ctx.request().method(),
+        ctx.request().path(),
+        statusCode,
+        failure);
+    JsonObject errorPayload =
+        new JsonObject()
+            .put("error", failure != null ? failure.getMessage() : "Unknown error")
+            .put("path", ctx.request().path())
+            .put("status", statusCode);
+    ctx.response()
+        .setStatusCode(statusCode)
+        .putHeader("Content-Type", "application/json")
+        .end(errorPayload.encode());
+  }
+
+  /**
+   * Endpoint for logout, redirects to the root URI
+   *
+   * @param ctx the current request
+   */
+  public void logout(RoutingContext ctx) {
+    Cookie cookie = ctx.request().getCookie(COOKIE_NAME);
+    if (cookie != null) {
+      // Ensure path is set so browsers clear it
+      cookie.setPath("/");
+    }
+    ctx.response().removeCookie(COOKIE_NAME);
+    ctx.redirect("/");
+  }
+
+  /** Endpoint to check if passkey credentials exist for a given username. */
+  private void passkeyExists(RoutingContext ctx) {
+    String username = ctx.pathParam("username");
+    if (username == null || username.isBlank()) {
+      ctx.response().setStatusCode(400).end("false");
+      return;
+    }
+    credentialRepository
+        .find(username, null)
+        .onComplete(
+            ar -> {
+              if (ar.succeeded()) {
+                boolean exists = !ar.result().isEmpty();
+                ctx.response().setStatusCode(200)
+                    .putHeader("Content-Type", "application/json")
+                    .end(String.valueOf(exists));
+              } else {
+                LOG.error("Failed to check credentials for {}", username, ar.cause());
+                ctx.response().setStatusCode(500).end("false");
+              }
+            });
   }
 }

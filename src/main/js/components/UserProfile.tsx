@@ -27,7 +27,7 @@ export const UserProfile: React.FC = () => {
       const checkPasskey = async () => {
         setIsChecking(true);
         try {
-          const response = await fetch(`/api/users/${user.username}/webauthn/credentials`);
+          const response = await fetch(`/webauthn/${user.username}/creds`);
           if (response.ok) {
             const data = await response.json();
             setHasPasskey(data);
@@ -55,6 +55,7 @@ export const UserProfile: React.FC = () => {
       const webAuthn = new WebAuthn();
       await webAuthn.register({
         username: user.username,
+        name: user.username,
         displayName: `${user.firstName} ${user.lastName}`,
         id: String(user.id),
       });

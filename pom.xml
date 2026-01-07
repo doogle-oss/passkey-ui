@@ -101,6 +101,12 @@
       <type>js</type>
       <version>${vertx.version}</version>
     </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.5.23</version>
+      <scope>compile</scope>
+    </dependency>
 
     <dependency>
       <artifactId>vertx-junit5</artifactId>

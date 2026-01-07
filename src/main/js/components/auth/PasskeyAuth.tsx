@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2 } from 'lucide-react';
-import { WebAuthn } from './Webauthn';
+import React, {useState} from 'react';
+import {useAuth} from '@/context/AuthContext';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
+import {Alert, AlertDescription} from '@/components/ui/alert';
+import {Loader2} from 'lucide-react';
+import {WebAuthn} from './Webauthn';
 
 interface RegistrationFormData {
   username: string;
@@ -21,7 +21,7 @@ interface LoginFormData {
 }
 
 export const PasskeyAuth: React.FC = () => {
-  const { login, register, isLoading: authLoading } = useAuth();
+  const {login, register, isLoading: authLoading} = useAuth();
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,16 +30,11 @@ export const PasskeyAuth: React.FC = () => {
   const [createdUser, setCreatedUser] = useState<any | null>(null);
 
   const [loginForm, setLoginForm] = useState<LoginFormData>({
-    username: '',
-    password: '',
+    username: '', password: '',
   });
 
   const [registerForm, setRegisterForm] = useState<RegistrationFormData>({
-    username: '',
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
+    username: '', firstName: '', lastName: '', email: '', password: '',
   });
   const [showSavePasskeyOffer, setShowSavePasskeyOffer] = useState(false);
   const [offeredUsername, setOfferedUsername] = useState('');
@@ -50,10 +45,9 @@ export const PasskeyAuth: React.FC = () => {
   const [showRegisterPasskeyPrompt, setShowRegisterPasskeyPrompt] = useState(false);
 
   const webAuthn = new WebAuthn({
-    registerOptionsChallengePath: '/q/webauthn/register-options-challenge',
-    registerPath: '/q/webauthn/register',
-    loginOptionsChallengePath: '/q/webauthn/login-options-challenge',
-    loginPath: '/q/webauthn/login'
+    registerPath: '/webauthn/register',
+    loginPath: '/webauthn/login',
+    callbackPath: '/webauthn/callback'
   });
 
   // Handle account creation (password required)
@@ -68,16 +62,13 @@ export const PasskeyAuth: React.FC = () => {
     setLoading(true);
     try {
       const registrationResponse = await fetch('/api/users/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
           username: registerForm.username,
           firstName: registerForm.firstName,
           lastName: registerForm.lastName,
           email: registerForm.email,
           password: registerForm.password,
-        }),
-        credentials: 'include',
+        }), credentials: 'include',
       });
 
       if (!registrationResponse.ok) {
@@ -109,18 +100,19 @@ export const PasskeyAuth: React.FC = () => {
     try {
       await webAuthn.register({
         username: registerForm.username,
+        name: registerForm.username,
         displayName: `${registerForm.firstName} ${registerForm.lastName}`
       });
 
       setSuccess('Passkey registered successfully! You can now login with your passkey.');
       // Optionally refresh user info
-      const resp = await fetch('/api/users/me', { method: 'GET', credentials: 'include' });
+      const resp = await fetch('/api/users/me', {method: 'GET', credentials: 'include'});
       if (resp.ok) {
         const userData = await resp.json();
         register(userData);
       }
       // reset local register form
-      setRegisterForm({ username: '', firstName: '', lastName: '', email: '', password: '' });
+      setRegisterForm({username: '', firstName: '', lastName: '', email: '', password: ''});
       setAccountCreated(false);
       setCreatedUser(null);
       setTimeout(() => setActiveTab('login'), 1500);
@@ -143,7 +135,7 @@ export const PasskeyAuth: React.FC = () => {
 
     try {
       // Check if passkeys exist for the user
-      const passkeyCheckResponse = await fetch(`/api/users/${loginForm.username}/webauthn/credentials`);
+      const passkeyCheckResponse = await fetch(`/webauthn/${loginForm.username}/creds`);
       if (!passkeyCheckResponse.ok) {
         throw new Error('Failed to check for passkey existence.');
       }
@@ -157,20 +149,20 @@ export const PasskeyAuth: React.FC = () => {
 
       // Proceed directly with challenge-based authentication
       await webAuthn.login({
-        username: loginForm.username
+        username: loginForm.username,
+        name: loginForm.username
       });
 
       // Fetch current user info
       const response = await fetch('/api/users/me', {
-        method: 'GET',
-        credentials: 'include',
+        method: 'GET', credentials: 'include',
       });
 
       if (response.ok) {
         const userData = await response.json();
         login(userData);
         setSuccess('Login successful!');
-        setLoginForm({ username: '', password: '' });
+        setLoginForm({username: '', password: ''});
       } else {
         throw new Error('Failed to fetch user information');
       }
@@ -193,12 +185,11 @@ export const PasskeyAuth: React.FC = () => {
     setError('');
     try {
       await webAuthn.register({
-        username: offeredUsername,
-        displayName: offeredUsername,
+        username: offeredUsername, name: offeredUsername, displayName: offeredUsername,
       });
 
       // Optionally refresh user info
-      const resp = await fetch('/api/users/me', { method: 'GET', credentials: 'include' });
+      const resp = await fetch('/api/users/me', {method: 'GET', credentials: 'include'});
       if (resp.ok) {
         const userData = await resp.json();
         register(userData);
@@ -218,7 +209,7 @@ export const PasskeyAuth: React.FC = () => {
   const handleRegisterPasskeyFromLogin = () => {
     // This is no longer used in the new flow
     // Pre-fill username in register form
-    setRegisterForm({ ...registerForm, username: failedLoginUsername });
+    setRegisterForm({...registerForm, username: failedLoginUsername});
     setShowPasskeyNotFoundOptions(false);
     setError('');
     setActiveTab('register');
@@ -239,7 +230,7 @@ export const PasskeyAuth: React.FC = () => {
       // Placeholder: In production, call backend to create a cross-device session
       // Example: POST /api/users/webauthn/cross-device/start { username }
       // Response: { sessionId, challenge, qrUrl } or similar
-      
+
       // For now, just show a message - real implementation would fetch QR from backend
       setSuccess('Scan this QR code with another device to authenticate.');
       // TODO: Display actual QR code from backend response
@@ -262,13 +253,9 @@ export const PasskeyAuth: React.FC = () => {
 
     try {
       const response = await fetch('/api/users/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: loginForm.username,
-          password: loginForm.password,
-        }),
-        credentials: 'include',
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+          username: loginForm.username, password: loginForm.password,
+        }), credentials: 'include',
       });
 
       if (!response.ok) {
@@ -279,7 +266,7 @@ export const PasskeyAuth: React.FC = () => {
       const userData = await response.json();
       setLoggedInUser(userData);
       setSuccess('Login successful!');
-      
+
       // Show passkey registration prompt after successful password login
       setShowRegisterPasskeyPrompt(true);
       // Auto-login user context
@@ -303,16 +290,17 @@ export const PasskeyAuth: React.FC = () => {
     try {
       await webAuthn.register({
         username: loggedInUser.username,
+        name: loggedInUser.username,
         displayName: `${loggedInUser.firstName} ${loggedInUser.lastName}`
       });
 
       setSuccess('Passkey registered successfully!');
       setShowRegisterPasskeyPrompt(false);
       setLoggedInUser(null);
-      setLoginForm({ username: '', password: '' });
-      
+      setLoginForm({username: '', password: ''});
+
       // Refresh user data
-      const resp = await fetch('/api/users/me', { method: 'GET', credentials: 'include' });
+      const resp = await fetch('/api/users/me', {method: 'GET', credentials: 'include'});
       if (resp.ok) {
         const userData = await resp.json();
         login(userData);
@@ -328,280 +316,282 @@ export const PasskeyAuth: React.FC = () => {
   const handleSkipPasskeyRegistration = () => {
     setShowRegisterPasskeyPrompt(false);
     setLoggedInUser(null);
-    setLoginForm({ username: '', password: '' });
+    setLoginForm({username: '', password: ''});
     setSuccess('');
   };
 
   if (authLoading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="animate-spin" />
-      </div>
-    );
+    return (<div className="flex justify-center items-center h-screen">
+          <Loader2 className="animate-spin"/>
+        </div>);
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Login Tab */}
-        {activeTab === 'login' && (
-          <Card className="shadow-lg">
-            <CardHeader className="space-y-2">
-              <CardTitle className="text-2xl">Login</CardTitle>
-              <CardDescription>Sign in with passkey or password</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+  return (<div
+          className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Login Tab */}
+          {activeTab === 'login' && (<Card className="shadow-lg">
+                <CardHeader className="space-y-2">
+                  <CardTitle className="text-2xl">Login</CardTitle>
+                  <CardDescription>Sign in with passkey or password</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {error && (<Alert variant="destructive">
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>)}
 
-              {success && (
-                <Alert className="bg-green-50 border-green-200">
-                  <AlertDescription className="text-green-800">{success}</AlertDescription>
-                </Alert>
-              )}
+                  {success && (<Alert className="bg-green-50 border-green-200">
+                        <AlertDescription className="text-green-800">{success}</AlertDescription>
+                      </Alert>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Username</label>
-                <Input
-                  type="text"
-                  placeholder="Enter your username"
-                  value={loginForm.username}
-                  onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Password</label>
-                <Input
-                  type="password"
-                  placeholder="Enter your password"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Button
-                  onClick={handlePasskeyLogin}
-                  disabled={loading}
-                  className="w-full"
-                  variant="default"
-                >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                    <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
-                  )}
-                  Login with Passkey
-                </Button>
-
-                <Button
-                  onClick={handlePasswordLogin}
-                  disabled={loading || !loginForm.password}
-                  className="w-full"
-                  variant="outline"
-                >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Login with Password
-                </Button>
-              </div>
-
-              {showSavePasskeyOffer && (
-                <div className="mt-4 p-3 border rounded bg-yellow-50">
-                  <p className="text-sm mb-2">Passkey not found for this account. Save this passkey to:</p>
-                  <div className="flex gap-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Username</label>
                     <Input
-                      value={offeredUsername}
-                      onChange={(e) => setOfferedUsername(e.target.value)}
-                      placeholder="username"
-                      disabled={loading}
+                        type="text"
+                        placeholder="Enter your username"
+                        value={loginForm.username}
+                        onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+                        disabled={loading}
                     />
-                    <Button onClick={handleSavePasskeyForUsername} disabled={loading} variant="default">Save</Button>
-                    <Button onClick={() => { setShowSavePasskeyOffer(false); setOfferedUsername(''); }} disabled={loading} variant="outline">Cancel</Button>
                   </div>
-                </div>
-              )}
 
-              {showRegisterPasskeyPrompt && loggedInUser && (
-                <div className="mt-4 p-4 border rounded bg-green-50 space-y-3">
-                  <p className="text-sm font-semibold text-gray-800">Great! You're logged in.</p>
-                  <p className="text-sm text-gray-700">Would you like to register a passkey for faster login next time?</p>
-                  <Button
-                    onClick={handleRegisterPasskeyForLoggedInUser}
-                    disabled={loading}
-                    className="w-full"
-                    variant="default"
-                  >
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                      <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
-                    )}
-                    Register Passkey Now
-                  </Button>
-                  <Button
-                    onClick={handleSkipPasskeyRegistration}
-                    disabled={loading}
-                    className="w-full"
-                    variant="outline"
-                  >
-                    Skip for Now
-                  </Button>
-                </div>
-              )}
-
-              {showQRCode && (
-                <div className="mt-4 p-4 border rounded bg-amber-50 space-y-3">
-                  <p className="text-sm font-semibold text-gray-800">Scan with another device</p>
-                  <div className="flex justify-center p-4 bg-white border rounded">
-                    {/* TODO: Replace with actual QR code image from backend */}
-                    <div className="w-40 h-40 bg-gray-200 flex items-center justify-center text-xs text-gray-600">
-                      QR Code will appear here
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Password</label>
+                    <Input
+                        type="password"
+                        placeholder="Enter your password"
+                        value={loginForm.password}
+                        onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                        disabled={loading}
+                    />
                   </div>
-                  <p className="text-xs text-gray-700">
-                    Open Luxestore on another device and scan this code to authenticate.
-                  </p>
-                  <Button
-                    onClick={generateQRCode}
-                    disabled={loading}
-                    className="w-full"
-                    variant="default"
-                  >
-                    Generate QR Code
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setShowQRCode(false);
-                      setShowPasskeyNotFoundOptions(true);
-                    }}
-                    disabled={loading}
-                    className="w-full"
-                    variant="outline"
-                  >
-                    Back
-                  </Button>
-                </div>
-              )}
 
-              <div className="text-center">
-                <button
-                  onClick={() => setActiveTab('register')}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                  disabled={loading}
-                >
-                  Don't have an account? Register
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                  <div className="space-y-2">
+                    <Button
+                        onClick={handlePasskeyLogin}
+                        disabled={loading}
+                        className="w-full"
+                        variant="default"
+                    >
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : (
+                          <img src="/passkey_logo.jpg" alt="Passkey"
+                               className="mr-2 h-5 w-5 rounded"/>)}
+                      Login with Passkey
+                    </Button>
 
-        {/* Register Tab */}
-        {activeTab === 'register' && (
-          <Card className="shadow-lg">
-            <CardHeader className="space-y-2">
-              <CardTitle className="text-2xl">Register</CardTitle>
-              <CardDescription>Create a new account — set a password first, then add a passkey</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+                    <Button
+                        onClick={handlePasswordLogin}
+                        disabled={loading || !loginForm.password}
+                        className="w-full"
+                        variant="outline"
+                    >
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                      Login with Password
+                    </Button>
+                  </div>
 
-              {success && (
-                <Alert className="bg-green-50 border-green-200">
-                  <AlertDescription className="text-green-800">{success}</AlertDescription>
-                </Alert>
-              )}
+                  {showSavePasskeyOffer && (<div className="mt-4 p-3 border rounded bg-yellow-50">
+                        <p className="text-sm mb-2">Passkey not found for this account. Save this
+                          passkey to:</p>
+                        <div className="flex gap-2">
+                          <Input
+                              value={offeredUsername}
+                              onChange={(e) => setOfferedUsername(e.target.value)}
+                              placeholder="username"
+                              disabled={loading}
+                          />
+                          <Button onClick={handleSavePasskeyForUsername} disabled={loading}
+                                  variant="default">Save</Button>
+                          <Button onClick={() => {
+                            setShowSavePasskeyOffer(false);
+                            setOfferedUsername('');
+                          }} disabled={loading} variant="outline">Cancel</Button>
+                        </div>
+                      </div>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Username</label>
-                <Input
-                  type="text"
-                  placeholder="Choose a username"
-                  value={registerForm.username}
-                  onChange={(e) => setRegisterForm({ ...registerForm, username: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
+                  {showRegisterPasskeyPrompt && loggedInUser && (
+                      <div className="mt-4 p-4 border rounded bg-green-50 space-y-3">
+                        <p className="text-sm font-semibold text-gray-800">Great! You're logged
+                          in.</p>
+                        <p className="text-sm text-gray-700">Would you like to register a passkey
+                          for faster login next time?</p>
+                        <Button
+                            onClick={handleRegisterPasskeyForLoggedInUser}
+                            disabled={loading}
+                            className="w-full"
+                            variant="default"
+                        >
+                          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : (
+                              <img src="/passkey_logo.jpg" alt="Passkey"
+                                   className="mr-2 h-5 w-5 rounded"/>)}
+                          Register Passkey Now
+                        </Button>
+                        <Button
+                            onClick={handleSkipPasskeyRegistration}
+                            disabled={loading}
+                            className="w-full"
+                            variant="outline"
+                        >
+                          Skip for Now
+                        </Button>
+                      </div>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">First Name</label>
-                <Input
-                  type="text"
-                  placeholder="Your first name"
-                  value={registerForm.firstName}
-                  onChange={(e) => setRegisterForm({ ...registerForm, firstName: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
+                  {showQRCode && (<div className="mt-4 p-4 border rounded bg-amber-50 space-y-3">
+                        <p className="text-sm font-semibold text-gray-800">Scan with another
+                          device</p>
+                        <div className="flex justify-center p-4 bg-white border rounded">
+                          {/* TODO: Replace with actual QR code image from backend */}
+                          <div
+                              className="w-40 h-40 bg-gray-200 flex items-center justify-center text-xs text-gray-600">
+                            QR Code will appear here
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-700">
+                          Open Luxestore on another device and scan this code to authenticate.
+                        </p>
+                        <Button
+                            onClick={generateQRCode}
+                            disabled={loading}
+                            className="w-full"
+                            variant="default"
+                        >
+                          Generate QR Code
+                        </Button>
+                        <Button
+                            onClick={() => {
+                              setShowQRCode(false);
+                              setShowPasskeyNotFoundOptions(true);
+                            }}
+                            disabled={loading}
+                            className="w-full"
+                            variant="outline"
+                        >
+                          Back
+                        </Button>
+                      </div>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Last Name</label>
-                <Input
-                  type="text"
-                  placeholder="Your last name"
-                  value={registerForm.lastName}
-                  onChange={(e) => setRegisterForm({ ...registerForm, lastName: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
+                  <div className="text-center">
+                    <button
+                        onClick={() => setActiveTab('register')}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                        disabled={loading}
+                    >
+                      Don't have an account? Register
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Email</label>
-                <Input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={registerForm.email}
-                  onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
+          {/* Register Tab */}
+          {activeTab === 'register' && (<Card className="shadow-lg">
+                <CardHeader className="space-y-2">
+                  <CardTitle className="text-2xl">Register</CardTitle>
+                  <CardDescription>Create a new account — set a password first, then add a
+                    passkey</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {error && (<Alert variant="destructive">
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>)}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Password</label>
-                <Input
-                  type="password"
-                  placeholder="Create a password"
-                  value={registerForm.password}
-                  onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                  disabled={loading}
-                />
-              </div>
+                  {success && (<Alert className="bg-green-50 border-green-200">
+                        <AlertDescription className="text-green-800">{success}</AlertDescription>
+                      </Alert>)}
 
-              <div className="space-y-2">
-                <Button onClick={handleCreateAccount} disabled={loading} className="w-full">
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Create Account
-                </Button>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Username</label>
+                    <Input
+                        type="text"
+                        placeholder="Choose a username"
+                        value={registerForm.username}
+                        onChange={(e) => setRegisterForm({
+                          ...registerForm,
+                          username: e.target.value
+                        })}
+                        disabled={loading}
+                    />
+                  </div>
 
-                {accountCreated && (
-                  <Button onClick={handleAddPasskey} disabled={loading} className="w-full" variant="outline">
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (
-                      <img src="/passkey_logo.jpg" alt="Passkey" className="mr-2 h-5 w-5 rounded" />
-                    )}
-                    Add Passkey
-                  </Button>
-                )}
-              </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">First Name</label>
+                    <Input
+                        type="text"
+                        placeholder="Your first name"
+                        value={registerForm.firstName}
+                        onChange={(e) => setRegisterForm({
+                          ...registerForm,
+                          firstName: e.target.value
+                        })}
+                        disabled={loading}
+                    />
+                  </div>
 
-              <div className="text-center">
-                <button
-                  onClick={() => setActiveTab('login')}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                  disabled={loading}
-                >
-                  Already have an account? Login
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
-  );
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Last Name</label>
+                    <Input
+                        type="text"
+                        placeholder="Your last name"
+                        value={registerForm.lastName}
+                        onChange={(e) => setRegisterForm({
+                          ...registerForm,
+                          lastName: e.target.value
+                        })}
+                        disabled={loading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Email</label>
+                    <Input
+                        type="email"
+                        placeholder="your@email.com"
+                        value={registerForm.email}
+                        onChange={(e) => setRegisterForm({...registerForm, email: e.target.value})}
+                        disabled={loading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Password</label>
+                    <Input
+                        type="password"
+                        placeholder="Create a password"
+                        value={registerForm.password}
+                        onChange={(e) => setRegisterForm({
+                          ...registerForm,
+                          password: e.target.value
+                        })}
+                        disabled={loading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button onClick={handleCreateAccount} disabled={loading} className="w-full">
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                      Create Account
+                    </Button>
+
+                    {accountCreated && (
+                        <Button onClick={handleAddPasskey} disabled={loading} className="w-full"
+                                variant="outline">
+                          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : (
+                              <img src="/passkey_logo.jpg" alt="Passkey"
+                                   className="mr-2 h-5 w-5 rounded"/>)}
+                          Add Passkey
+                        </Button>)}
+                  </div>
+
+                  <div className="text-center">
+                    <button
+                        onClick={() => setActiveTab('login')}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                        disabled={loading}
+                    >
+                      Already have an account? Login
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>)}
+        </div>
+      </div>);
 };

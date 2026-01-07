@@ -27,10 +27,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearAuthCookies = () => {
     try {
-      // Expire the Quarkus credential cookie to ensure browser session is cleared
-      document.cookie = 'quarkus-credential=; Max-Age=0; path=/;';
+      const cookies = document.cookie.split(';');
+      cookies.forEach(raw => {
+        const name = raw.split('=')[0]?.trim();
+        if (name) {
+          document.cookie = `${name}=; Max-Age=0; path=/;`;
+        }
+      });
     } catch (err) {
-      console.error('Failed to clear auth cookie:', err);
+      console.error('Failed to clear auth cookies:', err);
     }
   };
 
@@ -72,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     clearAuthCookies();
     try {
-      await fetch('/q/webauthn/logout', {
+      await fetch('/webauthn/logout', {
         method: 'POST',
         credentials: 'include',
       });

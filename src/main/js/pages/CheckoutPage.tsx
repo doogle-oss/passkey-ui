@@ -35,10 +35,9 @@ const CheckoutPage = () => {
   const [payWithPasskeyLoading, setPayWithPasskeyLoading] = useState(false);
 
   const paymentWebAuthn = new WebAuthn({
-    registerOptionsChallengePath: '/q/webauthn/register-options-challenge',
-    registerPath: '/q/webauthn/register',
-    loginOptionsChallengePath: '/q/webauthn/login-options-challenge',
-    loginPath: '/q/webauthn/login',
+    registerPath: '/webauthn/register',
+    loginPath: '/webauthn/login',
+    callbackPath: '/webauthn/callback'
   });
 
   // Form states
@@ -158,7 +157,7 @@ const CheckoutPage = () => {
   const checkPaymentPasskey = async () => {
     if (!paymentPasskeyUsername) return;
     try {
-      const resp = await fetch(`/api/users/${encodeURIComponent(paymentPasskeyUsername)}/webauthn/credentials`);
+      const resp = await fetch(`/webauthn/${encodeURIComponent(paymentPasskeyUsername)}/creds`);
       if (!resp.ok) return;
       const exists = await resp.json();
       setPaymentPasskeyExists(!!exists);
@@ -177,6 +176,7 @@ const CheckoutPage = () => {
     try {
       await paymentWebAuthn.register({
         username: paymentPasskeyUsername,
+        name: paymentPasskeyUsername,
         displayName: `${formData.email} (Payment Passkey)`,
       });
       toast.success('Payment passkey registered');
@@ -203,7 +203,8 @@ const CheckoutPage = () => {
     setPayWithPasskeyLoading(true);
     setIsProcessing(true);
     try {
-      await paymentWebAuthn.login({ username: paymentPasskeyUsername });
+      await paymentWebAuthn.login({ username: paymentPasskeyUsername,
+        name: paymentPasskeyUsername});
       toast.success('Payment authorized via passkey');
       if (formData.email) {
         sessionStorage.setItem('lastCheckoutEmail', formData.email);

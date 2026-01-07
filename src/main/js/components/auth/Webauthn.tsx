@@ -55,10 +55,9 @@ export const base64ToBuffer = (base64string: string): ArrayBuffer => {
 };
 
 export interface WebAuthnOptions {
-  registerOptionsChallengePath?: string;
-  loginOptionsChallengePath?: string;
   registerPath?: string;
   loginPath?: string;
+  callbackPath?: string;
   csrf?: {
     header: string;
     value: string;
@@ -67,22 +66,21 @@ export interface WebAuthnOptions {
 
 export interface WebAuthnUser {
   username: string;
+  name: string;
   displayName?: string;
   id?: string;
 }
 
 export class WebAuthn {
-  registerOptionsChallengePath: string;
-  loginOptionsChallengePath: string;
   registerPath: string;
   loginPath: string;
+  callbackPath: string;
   csrf?: { header: string; value: string };
 
   constructor(options: WebAuthnOptions = {}) {
-    this.registerOptionsChallengePath = options.registerOptionsChallengePath || "/q/webauthn/register-options-challenge";
-    this.loginOptionsChallengePath = options.loginOptionsChallengePath || "/q/webauthn/login-options-challenge";
-    this.registerPath = options.registerPath || "/q/webauthn/register";
-    this.loginPath = options.loginPath || "/q/webauthn/login";
+    this.registerPath = options.registerPath || "/webauthn/register";
+    this.loginPath = options.loginPath || "/webauthn/login";
+    this.callbackPath = options.callbackPath || "/webauthn/callback";
     this.csrf = options.csrf;
   }
 
@@ -100,27 +98,26 @@ export class WebAuthn {
     return fetch(path, options);
   }
 
-  registerClientSteps(user: WebAuthnUser): Promise<any> {
-    if (!this.registerOptionsChallengePath) {
-      return Promise.reject('Register challenge path missing form the initial configuration!');
+  register(user: WebAuthnUser): Promise<Response> {
+    if (!this.registerPath) {
+      return Promise.reject('Register path missing from the initial configuration!');
     }
-    const params = new URLSearchParams({ username: user.username });
-    if (user.displayName) {
-        params.append('displayName', user.displayName);
+    if (!this.callbackPath) {
+      return Promise.reject('Callback path missing from the initial configuration!');
     }
-    
-    return this.fetchWithCsrf(this.registerOptionsChallengePath + "?" + params.toString(), {
-      method: 'GET',
+    return this.fetchWithCsrf(this.registerPath, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(user || {})
     })
       .then(res => {
         if (res.status === 200) {
           return res;
         }
-          throw new Error(res.statusText);
+        throw new Error(res.statusText);
       })
       .then(res => res.json())
       .then(res => {
@@ -135,35 +132,22 @@ export class WebAuthn {
       })
       .then(res => navigator.credentials.create({ publicKey: res }))
       .then((credential: any) => {
-        return {
-          id: credential.id,
-          rawId: bufferToBase64(credential.rawId),
-          response: {
-            attestationObject: bufferToBase64(credential.response.attestationObject),
-            clientDataJSON: bufferToBase64(credential.response.clientDataJSON)
-          },
-          type: credential.type
-        };
-      });
-  }
-
-  register(user: WebAuthnUser): Promise<Response> {
-    if (!this.registerPath) {
-      throw new Error('Register path is missing!');
-    }
-    if (!user || !user.username) {
-      return Promise.reject('User name (user.username) required');
-    }
-    return this.registerClientSteps(user)
-      .then(body => {
-        return this.fetchWithCsrf(this.registerPath + "?" + new URLSearchParams({ username: user.username }).toString(), {
+        return this.fetchWithCsrf(this.callbackPath, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(body)
-        })
+          body: JSON.stringify({
+            id: credential.id,
+            rawId: bufferToBase64(credential.rawId),
+            response: {
+              attestationObject: bufferToBase64(credential.response.attestationObject),
+              clientDataJSON: bufferToBase64(credential.response.clientDataJSON)
+            },
+            type: credential.type
+          })
+        });
       })
       .then(async res => {
         if (res.status >= 200 && res.status < 300) {
@@ -174,149 +158,59 @@ export class WebAuthn {
       });
   }
 
-  loginClientSteps(user: WebAuthnUser): Promise<any> {
-    console.log('[WebAuthn] loginClientSteps called with user:', user);
-    
-    if (!this.loginOptionsChallengePath) {
-      console.error('[WebAuthn] Login challenge path is missing!');
-      return Promise.reject('Login challenge path missing from the initial configuration!');
+  login(user: WebAuthnUser): Promise<Response> {
+    if (!this.loginPath) {
+      return Promise.reject('Login path is missing!');
     }
-    
-    let path = this.loginOptionsChallengePath;
-    if (user != null && user.username != null) {
-      path = path + "?" + new URLSearchParams({ username: user.username }).toString();
+    if (!this.callbackPath) {
+      return Promise.reject('Callback path missing from the initial configuration!');
     }
-    console.log('[WebAuthn] Challenge endpoint path:', path);
-    
-    return this.fetchWithCsrf(path, {
-      method: 'GET',
+    return this.fetchWithCsrf(this.loginPath, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(user)
     })
       .then(res => {
-        console.log('[WebAuthn] Challenge fetch response status:', res.status);
         if (res.status === 200) {
           return res;
         }
-        console.error('[WebAuthn] Challenge fetch failed with status:', res.status, res.statusText);
         throw new Error(res.statusText);
       })
+      .then(res => res.json())
       .then(res => {
-        console.log('[WebAuthn] Parsing challenge JSON response...');
-        return res.json();
-      })
-      .then(res => {
-        console.log('[WebAuthn] Challenge response received:', {
-          challengeLength: res.challenge?.length,
-          rpId: res.rpId,
-          allowCredentialsCount: res.allowCredentials?.length || 0,
-          userVerification: res.userVerification
-        });
-        
         res.challenge = base64ToBuffer(res.challenge);
-        console.log('[WebAuthn] Challenge converted to buffer, length:', res.challenge.byteLength);
-        
         if (res.allowCredentials) {
-          console.log('[WebAuthn] Converting', res.allowCredentials.length, 'allowCredentials to buffers...');
           for (let i = 0; i < res.allowCredentials.length; i++) {
             res.allowCredentials[i].id = base64ToBuffer(res.allowCredentials[i].id);
-            console.log('[WebAuthn] Credential', i, 'converted:', {
-              idLength: res.allowCredentials[i].id.byteLength,
-              type: res.allowCredentials[i].type,
-              transports: res.allowCredentials[i].transports
-            });
           }
-        } else {
-          console.warn('[WebAuthn] No allowCredentials in response - will search for all credentials');
         }
-        
-        console.log('[WebAuthn] Final publicKey options:', {
-          challenge: res.challenge.byteLength,
-          rpId: res.rpId,
-          userVerification: res.userVerification,
-          allowCredentialsCount: res.allowCredentials?.length || 0
-        });
-        
         return res;
       })
-      .then(res => {
-        console.log('[WebAuthn] Calling navigator.credentials.get()...');
-        console.log('[WebAuthn] Window hostname:', window.location.hostname);
-        console.log('[WebAuthn] Window origin:', window.location.origin);
-        
-        return navigator.credentials.get({ publicKey: res })
-          .then((credential: any) => {
-            console.log('[WebAuthn] Credential retrieved successfully:', {
-              id: credential?.id,
-              type: credential?.type,
-              hasResponse: !!credential?.response
-            });
-            return credential;
-          })
-          .catch((err: Error) => {
-            console.error('[WebAuthn] navigator.credentials.get() failed:', {
-              name: err.name,
-              message: err.message,
-              stack: err.stack
-            });
-            throw err;
-          });
-      })
+      .then(res => navigator.credentials.get({ publicKey: res }))
       .then((credential: any) => {
-        if (!credential) {
-          console.error('[WebAuthn] No credential returned (user may have cancelled)');
-          throw new Error('No credential returned - operation may have been cancelled');
-        }
-        
-        console.log('[WebAuthn] Formatting credential response...');
-        const formattedCredential = {
-          id: credential.id,
-          rawId: bufferToBase64(credential.rawId),
-          response: {
-            clientDataJSON: bufferToBase64(credential.response.clientDataJSON),
-            authenticatorData: bufferToBase64(credential.response.authenticatorData),
-            signature: bufferToBase64(credential.response.signature),
-            userHandle: credential.response.userHandle ? bufferToBase64(credential.response.userHandle) : undefined,
-          },
-          type: credential.type
-        };
-        
-        console.log('[WebAuthn] Formatted credential ready to send:', {
-          id: formattedCredential.id,
-          type: formattedCredential.type,
-          hasClientDataJSON: !!formattedCredential.response.clientDataJSON,
-          hasAuthenticatorData: !!formattedCredential.response.authenticatorData,
-          hasSignature: !!formattedCredential.response.signature
-        });
-        
-        return formattedCredential;
-      })
-      .catch((err: any) => {
-        console.error('[WebAuthn] loginClientSteps error:', {
-          name: err?.name,
-          message: err?.message,
-          type: typeof err
-        });
-        throw err;
-      });
-  }
-
-  login(user: WebAuthnUser): Promise<Response> {
-    if (!this.loginPath) {
-      throw new Error('Login path is missing!');
-    }
-    return this.loginClientSteps(user)
-      .then(body => {
-        return this.fetchWithCsrf(this.loginPath, {
+        return this.fetchWithCsrf(this.callbackPath, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(body),
-        })
+          body: JSON.stringify({
+            id: credential.id,
+            rawId: bufferToBase64(credential.rawId),
+            response: {
+              clientDataJSON: bufferToBase64(credential.response.clientDataJSON),
+              authenticatorData: bufferToBase64(credential.response.authenticatorData),
+              signature: bufferToBase64(credential.response.signature),
+              userHandle: credential.response.userHandle
+                ? bufferToBase64(credential.response.userHandle)
+                : undefined
+            },
+            type: credential.type
+          })
+        });
       })
       .then(async res => {
         if (res.status >= 200 && res.status < 300) {
