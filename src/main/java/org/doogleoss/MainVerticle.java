@@ -8,7 +8,6 @@ import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.vertx.core.AbstractVerticle;
 import io.vertx.core.json.jackson.DatabindCodec;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
-import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.Router;
 import io.vertx.mutiny.ext.web.handler.FaviconHandler;
 import io.vertx.mutiny.ext.web.handler.SessionHandler;
@@ -16,25 +15,16 @@ import io.vertx.mutiny.ext.web.sstore.LocalSessionStore;
 import io.vertx.mutiny.sqlclient.Pool;
 import org.doogleoss.config.DatabaseConfig;
 import org.doogleoss.repository.UserRepository;
-import org.doogleoss.routers.LuxeUserRouter;
-import org.doogleoss.service.UserService;
-import org.doogleoss.routers.WebAuthnRouter;
 import org.doogleoss.repository.WebCredentialRepository;
+import org.doogleoss.routers.LuxeUserRouter;
+import org.doogleoss.routers.WebAuthnRouter;
+import org.doogleoss.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class MainVerticle extends AbstractVerticle {
 
   private static final Logger LOG = LoggerFactory.getLogger(MainVerticle.class);
-
-  public MainVerticle() {
-    System.out.println(System.getProperty("vertx.logger-delegate-factory-class-name"));
-    LOG.info("Instanciating MainVerticle");
-    System.setProperty(
-        "vertx.logger-delegate-factory-class-name",
-        SLF4JLogDelegateFactory.class.getName()
-    );
-  }
 
   static {
     DatabindCodec.mapper().registerModule(new JavaTimeModule());
@@ -43,14 +33,23 @@ public class MainVerticle extends AbstractVerticle {
 
   private Pool pool;
   private UserRepository userRepository;
+  private WebCredentialRepository webCredentialRepository;
 
-//  static void main(String... args) {
-//    var vertx = Vertx.vertx();
-//    LOG.trace("Deploying MainVerticle");
-//    toUni(vertx.getDelegate().deployVerticle(new MainVerticle()))
-//        .subscribe()
-//        .with(ok -> LOG.info("MainVerticle deployed"), err -> LOG.error("Deployment failed", err));
-//  }
+  public MainVerticle() {
+    System.out.println(System.getProperty("vertx.logger-delegate-factory-class-name"));
+    LOG.info("Instanciating MainVerticle");
+    System.setProperty(
+        "vertx.logger-delegate-factory-class-name", SLF4JLogDelegateFactory.class.getName());
+  }
+
+  //  static void main(String... args) {
+  //    var vertx = Vertx.vertx();
+  //    LOG.trace("Deploying MainVerticle");
+  //    toUni(vertx.getDelegate().deployVerticle(new MainVerticle()))
+  //        .subscribe()
+  //        .with(ok -> LOG.info("MainVerticle deployed"), err -> LOG.error("Deployment failed",
+  // err));
+  //  }
 
   @Override
   public Uni<Void> asyncStart() {
@@ -60,6 +59,7 @@ public class MainVerticle extends AbstractVerticle {
             p -> {
               this.pool = p;
               this.userRepository = new UserRepository(p);
+              this.webCredentialRepository = new WebCredentialRepository(p);
               LOG.trace("Database pool initialized and user repository created");
             })
         .flatMap(
@@ -82,7 +82,7 @@ public class MainVerticle extends AbstractVerticle {
               // WebAuthn endpoints under /webauthn/* expected by frontend Webauthn.tsx
               router
                   .route("/webauthn/*")
-                  .subRouter(new WebAuthnRouter(vertx, new WebCredentialRepository()).build());
+                  .subRouter(new WebAuthnRouter(vertx, webCredentialRepository).build());
 
               LOG.trace("Routers initialized, creating HTTP server");
               var server = vertx.createHttpServer().requestHandler(router);

@@ -146,6 +146,21 @@ export const UserProfile: React.FC = () => {
               <AlertDescription>
                 You have a passkey registered with this account.
               </AlertDescription>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:gap-3">
+                <Button onClick={handleRegisterPasskey} disabled={isRegistering} variant="outline">
+                  {isRegistering ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding to this device...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      Add passkey on this device
+                    </>
+                  )}
+                </Button>
+              </div>
             </Alert>
           ) : hasPasskey === false ? (
              <Alert>
